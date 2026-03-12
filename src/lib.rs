@@ -16,7 +16,6 @@ pub mod version2;
 use bytes::{Buf, BytesMut};
 use snafu::{ensure, ResultExt as _, Snafu};
 
-
 #[derive(Debug, Snafu)]
 #[cfg_attr(not(feature = "always_exhaustive"), non_exhaustive)] // A new version may be added
 #[cfg_attr(test, derive(PartialEq, Eq))]

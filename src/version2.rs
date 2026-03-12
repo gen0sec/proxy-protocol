@@ -3,7 +3,6 @@ use snafu::{ensure, Snafu};
 use std::convert::TryInto;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 
-
 #[derive(Debug, Snafu)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub enum ParseError {
@@ -228,10 +227,10 @@ impl Tlv for SslExtensionTlv {
     fn parse_parts(type_id: u8, len: u16, buf: &mut impl Buf) -> Result<Self, ParseError> {
         Ok(match type_id {
             PP2_SUBTYPE_SSL_VERSION => Self::Version(ascii_from_buf(buf, len)?),
-            PP2_SUBTYPE_SSL_CIPHER => Self::Version(ascii_from_buf(buf, len)?),
-            PP2_SUBTYPE_SSL_SIG_ALG => Self::Version(ascii_from_buf(buf, len)?),
-            PP2_SUBTYPE_SSL_KEY_ALG => Self::Version(ascii_from_buf(buf, len)?),
-            PP2_SUBTYPE_SSL_CN => Self::Version(str_from_buf(buf, len)?),
+            PP2_SUBTYPE_SSL_CIPHER => Self::Cipher(ascii_from_buf(buf, len)?),
+            PP2_SUBTYPE_SSL_SIG_ALG => Self::SigAlg(ascii_from_buf(buf, len)?),
+            PP2_SUBTYPE_SSL_KEY_ALG => Self::KeyAlg(ascii_from_buf(buf, len)?),
+            PP2_SUBTYPE_SSL_CN => Self::ClientCN(str_from_buf(buf, len)?),
             _ => return InvalidTlvTypeIdSnafu { type_id }.fail(),
         })
     }
@@ -249,12 +248,12 @@ impl Ssl {
         if buf.remaining() < len.into() {
             return UnexpectedEofSnafu.fail();
         }
-        let mut ext_len = len
-            .checked_sub(5)
-            .ok_or_else(|| ParseError::InsufficientLengthSpecified {
-                given: len.into(),
-                needs: 5,
-            })?;
+        let mut ext_len =
+            len.checked_sub(5)
+                .ok_or_else(|| ParseError::InsufficientLengthSpecified {
+                    given: len.into(),
+                    needs: 5,
+                })?;
         let client = SslClientFlags(buf.get_u8());
         let verify = SslVerifyStatus(buf.get_u32());
         let mut extensions = Vec::new();
@@ -584,13 +583,12 @@ pub(crate) fn parse(buf: &mut impl Buf) -> Result<super::ProxyHeader, ParseError
             extensions.push(ExtensionTlv::parse(buf)?);
             let rem = buf.remaining();
             let parsed = rem0.checked_sub(rem).expect("Buf error");
-            ext_len =
-                ext_len
-                    .checked_sub(parsed)
-                    .ok_or_else(|| ParseError::InsufficientLengthSpecified {
-                        given: ext_len,
-                        needs: parsed,
-                    })?;
+            ext_len = ext_len.checked_sub(parsed).ok_or_else(|| {
+                ParseError::InsufficientLengthSpecified {
+                    given: ext_len,
+                    needs: parsed,
+                }
+            })?;
         }
     }
 

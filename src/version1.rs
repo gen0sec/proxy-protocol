@@ -6,7 +6,6 @@ use std::{
     str::{FromStr as _, Utf8Error},
 };
 
-
 const CR: u8 = 0x0D;
 const LF: u8 = 0x0A;
 
@@ -120,8 +119,12 @@ pub(crate) fn parse(buf: &mut impl Buf) -> Result<super::ProxyHeader, ParseError
     let source = &buf.chunk()[..count];
     let source = std::str::from_utf8(source).context(NonAsciiSnafu)?;
     let source = match address_family {
-        ProxyAddressFamily::Tcp4 => IpAddr::V4(Ipv4Addr::from_str(source).context(InvalidAddressSnafu)?),
-        ProxyAddressFamily::Tcp6 => IpAddr::V6(Ipv6Addr::from_str(source).context(InvalidAddressSnafu)?),
+        ProxyAddressFamily::Tcp4 => {
+            IpAddr::V4(Ipv4Addr::from_str(source).context(InvalidAddressSnafu)?)
+        }
+        ProxyAddressFamily::Tcp6 => {
+            IpAddr::V6(Ipv6Addr::from_str(source).context(InvalidAddressSnafu)?)
+        }
         ProxyAddressFamily::Unknown => unreachable!("unknown should have its own branch"),
     };
     buf.advance(count);
