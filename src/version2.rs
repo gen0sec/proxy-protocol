@@ -121,7 +121,7 @@ trait Tlv: Sized {
         let vlen = self.value_len()?;
         if vlen
             .checked_add(3)
-            .map_or(true, |tlv_len| buf.remaining_mut() < tlv_len.into())
+            .is_none_or(|tlv_len| buf.remaining_mut() < tlv_len.into())
         {
             return Err(EncodeError::ValueTooLarge);
         }
@@ -147,7 +147,7 @@ trait Tlv: Sized {
         let expected_rem = buf
             .remaining()
             .checked_sub(vlen.into())
-            .ok_or_else(|| ParseError::UnexpectedEof)?;
+            .ok_or(ParseError::UnexpectedEof)?;
         let r = Self::parse_parts(type_id, vlen, buf)?;
         // Assert, because it would be an internal error
         assert_eq!(buf.remaining(), expected_rem);
@@ -500,7 +500,7 @@ pub(crate) fn parse(buf: &mut impl Buf) -> Result<super::ProxyHeader, ParseError
     let mut ext_len =
         length
             .checked_sub(address_len)
-            .ok_or_else(|| ParseError::InsufficientLengthSpecified {
+            .ok_or(ParseError::InsufficientLengthSpecified {
                 given: length,
                 needs: address_len,
             })?;
@@ -583,12 +583,12 @@ pub(crate) fn parse(buf: &mut impl Buf) -> Result<super::ProxyHeader, ParseError
             extensions.push(ExtensionTlv::parse(buf)?);
             let rem = buf.remaining();
             let parsed = rem0.checked_sub(rem).expect("Buf error");
-            ext_len = ext_len.checked_sub(parsed).ok_or_else(|| {
+            ext_len = ext_len.checked_sub(parsed).ok_or(
                 ParseError::InsufficientLengthSpecified {
                     given: ext_len,
                     needs: parsed,
-                }
-            })?;
+                },
+            )?;
         }
     }
 
