@@ -583,12 +583,13 @@ pub(crate) fn parse(buf: &mut impl Buf) -> Result<super::ProxyHeader, ParseError
             extensions.push(ExtensionTlv::parse(buf)?);
             let rem = buf.remaining();
             let parsed = rem0.checked_sub(rem).expect("Buf error");
-            ext_len = ext_len.checked_sub(parsed).ok_or(
-                ParseError::InsufficientLengthSpecified {
-                    given: ext_len,
-                    needs: parsed,
-                },
-            )?;
+            ext_len =
+                ext_len
+                    .checked_sub(parsed)
+                    .ok_or(ParseError::InsufficientLengthSpecified {
+                        given: ext_len,
+                        needs: parsed,
+                    })?;
         }
     }
 
