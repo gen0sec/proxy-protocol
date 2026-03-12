@@ -22,6 +22,8 @@ jobs:
             target/
           key: ${{ runner.os }}-proxy-protocol-${{ hashFiles('**/Cargo.toml') }}
           restore-keys: ${{ runner.os }}-proxy-protocol
+      - run: cargo fmt --check
+      - run: cargo test -- --include-ignored
       - run: cargo build
       - uses: actions-rs/cargo@v1
         with:

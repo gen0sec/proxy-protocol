@@ -16,7 +16,6 @@ pub mod version2;
 use bytes::{Buf, BytesMut};
 use snafu::{ensure, ResultExt as _, Snafu};
 
-
 #[derive(Debug, Snafu)]
 #[cfg_attr(not(feature = "always_exhaustive"), non_exhaustive)] // A new version may be added
 #[cfg_attr(test, derive(PartialEq, Eq))]
@@ -130,10 +129,7 @@ fn parse_version(buf: &mut impl Buf) -> Result<u32, ParseError> {
 /// available through [Buf::chunk], at the very least for the header. Data that
 /// follows may be chunked as you wish.
 pub fn parse(buf: &mut impl Buf) -> Result<ProxyHeader, ParseError> {
-    let version = match parse_version(buf) {
-        Ok(ver) => ver,
-        Err(e) => return Err(e),
-    };
+    let version = parse_version(buf)?;
 
     Ok(match version {
         1 => self::version1::parse(buf).context(Version1Snafu)?,
