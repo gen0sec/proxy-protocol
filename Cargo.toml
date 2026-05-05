@@ -1,6 +1,6 @@
 [package]
 name = "proxy-protocol"
-version = "0.5.1"
+version = "0.5.2"
 authors = ["Gen0Sec <support@gen0sec.com>"]
 edition = "2024"
 
