@@ -1,0 +1,32 @@
+name: Wellness Check
+on:
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  fmt-and-test:
+    runs-on: ubuntu-latest
+    env:
+      CARGO_REGISTRIES_GEN0SEC_INDEX: sparse+https://crates-internal.g0s.dev/api/v1/crates/
+      CARGO_REGISTRIES_GEN0SEC_TOKEN: ${{ secrets.GEN0SEC_CARGO_TOKEN }}
+      CARGO_REGISTRIES_GEN0SEC_CREDENTIAL_PROVIDER: cargo:token
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Check clippy
+        run: cargo clippy --all-targets --all-features -- --deny warnings
+
+      - name: Run tests
+        run: cargo test -- --include-ignored

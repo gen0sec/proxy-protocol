@@ -8,6 +8,14 @@ license = "MIT OR Apache-2.0"
 description = "PROXY protocol serializer and deserializer"
 documentation = "https://docs.rs/proxy-protocol/"
 repository = "https://github.com/Proximyst/proxy-protocol.git"
+keywords = ["proxy", "proxy-protocol", "haproxy", "networking"]
+categories = ["network-programming", "parser-implementations"]
+links = "proxy-protocol"
+readme = "README.md"
+
+[package.metadata.release]
+publish = false
+tag-name = "v{{version}}"
 
 [dependencies]
 snafu = "~0.9"

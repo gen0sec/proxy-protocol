@@ -410,7 +410,7 @@ mod encode_tests {
     #[test]
     fn test_unknown() {
         let encoded = encode(ProxyAddresses::Unknown);
-        assert!(matches!(encoded, Ok(_)));
+        assert!(encoded.is_ok());
         assert_eq!(encoded.unwrap(), &b"PROXY UNKNOWN\r\n"[..]);
     }
 
@@ -420,7 +420,7 @@ mod encode_tests {
             source: SocketAddrV4::new(Ipv4Addr::new(1, 2, 3, 4), 987),
             destination: SocketAddrV4::new(Ipv4Addr::new(255, 254, 253, 252), 12345),
         });
-        assert!(matches!(encoded, Ok(_)));
+        assert!(encoded.is_ok());
         assert_eq!(
             encoded.unwrap(),
             Bytes::from_static(&b"PROXY TCP4 1.2.3.4 255.254.253.252 987 12345\r\n"[..]),
@@ -438,7 +438,7 @@ mod encode_tests {
                 0,
             ),
         });
-        assert!(matches!(encoded, Ok(_)));
+        assert!(encoded.is_ok());
         assert_eq!(
             encoded.unwrap(),
             Bytes::from_static(
@@ -455,7 +455,7 @@ mod encode_tests {
                 0,
             ),
         });
-        assert!(matches!(encoded, Ok(_)));
+        assert!(encoded.is_ok());
         assert_eq!(
             encoded.unwrap(),
             Bytes::from_static(&b"PROXY TCP6 1:2:3:4:5:6:7:8 ffff:fffe::1:2:3 987 12345\r\n"[..]),
@@ -465,7 +465,7 @@ mod encode_tests {
             source: SocketAddrV6::new(Ipv6Addr::new(1, 2, 3, 4, 5, 6, 7, 8), 987, 0, 0),
             destination: SocketAddrV6::new(Ipv6Addr::new(0, 0, 0, 0, 0, 1, 2, 3), 12345, 0, 0),
         });
-        assert!(matches!(encoded, Ok(_)));
+        assert!(encoded.is_ok());
         assert_eq!(
             encoded.unwrap(),
             Bytes::from_static(&b"PROXY TCP6 1:2:3:4:5:6:7:8 ::1:2:3 987 12345\r\n"[..]),

@@ -5,6 +5,10 @@ jobs:
   build:
     name: Build, test, check
     runs-on: ubuntu-latest
+    env:
+      CARGO_REGISTRIES_GEN0SEC_INDEX: sparse+https://crates-internal.g0s.dev/api/v1/crates/
+      CARGO_REGISTRIES_GEN0SEC_TOKEN: ${{ secrets.GEN0SEC_CARGO_TOKEN }}
+      CARGO_REGISTRIES_GEN0SEC_CREDENTIAL_PROVIDER: cargo:token
     steps:
       - uses: actions/checkout@v6
       - uses: actions-rs/toolchain@v1
