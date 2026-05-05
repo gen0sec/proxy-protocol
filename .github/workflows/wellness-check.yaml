@@ -31,6 +31,13 @@ jobs:
       - run: cargo fmt --version
       - run: cargo fmt -- --check
 
+  machete:
+    name: Unused dependencies (cargo-machete)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: bnjbvr/cargo-machete@ac30a525c0a8d163a92d727b3ff079ee3f6ecb08 # v0.9.2
+
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
