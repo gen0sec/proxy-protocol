@@ -2,31 +2,118 @@ name: Wellness Check
 on:
   pull_request:
     branches: [main, master]
+  push:
+    branches: [main, master]
 
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_REGISTRIES_GEN0SEC_INDEX: sparse+https://crates-internal.g0s.dev/api/v1/crates/
+  CARGO_REGISTRIES_GEN0SEC_TOKEN: ${{ secrets.GEN0SEC_CARGO_TOKEN }}
+  CARGO_REGISTRIES_GEN0SEC_CREDENTIAL_PROVIDER: cargo:token
+
 jobs:
-  fmt-and-test:
+  fmt:
+    name: Formatting
     runs-on: ubuntu-latest
-    env:
-      CARGO_REGISTRIES_GEN0SEC_INDEX: sparse+https://crates-internal.g0s.dev/api/v1/crates/
-      CARGO_REGISTRIES_GEN0SEC_TOKEN: ${{ secrets.GEN0SEC_CARGO_TOKEN }}
-      CARGO_REGISTRIES_GEN0SEC_CREDENTIAL_PROVIDER: cargo:token
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # nightly
+        with:
+          toolchain: nightly
+          components: rustfmt
+      - run: cargo fmt --version
+      - run: cargo fmt -- --check
 
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
-          components: rustfmt, clippy
-
+          components: clippy
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      - run: cargo clippy --locked --all-targets --all-features -- --deny warnings
 
-      - name: Check formatting
-        run: cargo fmt --all -- --check
+  doc:
+    name: Documentation
+    runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: -D warnings
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      - run: cargo doc --locked --no-deps --all-features
 
-      - name: Check clippy
-        run: cargo clippy --all-targets --all-features -- --deny warnings
+  unit-tests:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    needs: [fmt, clippy]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      - run: cargo test --locked --lib --all-features
 
-      - name: Run tests
-        run: cargo test -- --include-ignored
+  e2e:
+    name: E2E (--include-ignored)
+    runs-on: ubuntu-latest
+    needs: [fmt, clippy]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      - run: cargo test --locked -- --include-ignored
+
+  miri:
+    name: Miri (UB detector)
+    runs-on: ubuntu-latest
+    needs: [fmt, clippy]
+    env:
+      MIRIFLAGS: -Zmiri-disable-isolation -Zmiri-permissive-provenance
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # nightly
+        with:
+          toolchain: nightly
+          components: miri
+      # FFI / shell-out features (libbpf, libnetfilter-queue, ssh, etc.)
+      # are unsupported under miri. Restrict to pure-Rust core to cover
+      # parsers + collection plumbing without touching kernel FFI.
+      - run: cargo miri test --no-default-features --lib
+
+  sanitizers:
+    name: Sanitizer (${{ matrix.sanitizer }})
+    runs-on: ubuntu-latest
+    needs: [fmt, clippy]
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitizer: [address, thread, leak]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # nightly
+        with:
+          toolchain: nightly
+          components: rust-src
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          key: san-${{ matrix.sanitizer }}
+      - name: Test with sanitizer
+        env:
+          RUSTFLAGS: -Zsanitizer=${{ matrix.sanitizer }}
+          RUSTDOCFLAGS: -Zsanitizer=${{ matrix.sanitizer }}
+          ASAN_OPTIONS: detect_stack_use_after_return=1,detect_leaks=0
+          RUST_BACKTRACE: 0
+        # Pure-Rust core only — kernel-FFI features produce false positives
+        # from external C libs that aren't built with sanitizers.
+        run: cargo test -Zbuild-std --no-default-features --target=x86_64-unknown-linux-gnu --lib --bins --tests
