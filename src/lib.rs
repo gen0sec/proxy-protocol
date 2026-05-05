@@ -14,7 +14,7 @@ pub mod version1;
 pub mod version2;
 
 use bytes::{Buf, BytesMut};
-use snafu::{ensure, ResultExt as _, Snafu};
+use snafu::{ResultExt as _, Snafu, ensure};
 
 #[derive(Debug, Snafu)]
 #[cfg_attr(not(feature = "always_exhaustive"), non_exhaustive)] // A new version may be added
@@ -94,7 +94,9 @@ fn parse_version(buf: &mut impl Buf) -> Result<u32, ParseError> {
     ensure!(buf.remaining() >= 13, NotProxyHeaderSnafu);
     ensure!(
         buf.chunk()[..12]
-            == [0x0D, 0x0A, 0x0D, 0x0A, 0x00, 0x0D, 0x0A, 0x51, 0x55, 0x49, 0x54, 0x0A],
+            == [
+                0x0D, 0x0A, 0x0D, 0x0A, 0x00, 0x0D, 0x0A, 0x51, 0x55, 0x49, 0x54, 0x0A
+            ],
         NotProxyHeaderSnafu
     );
     buf.advance(12);

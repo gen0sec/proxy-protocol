@@ -1,5 +1,5 @@
 use bytes::{Buf, BufMut as _, BytesMut};
-use snafu::{ensure, Snafu};
+use snafu::{Snafu, ensure};
 use std::convert::TryInto;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 
