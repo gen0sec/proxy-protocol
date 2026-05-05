@@ -1,5 +1,5 @@
 use bytes::{Buf, BufMut as _, BytesMut};
-use snafu::{ensure, OptionExt as _, ResultExt as _, Snafu};
+use snafu::{OptionExt as _, ResultExt as _, Snafu, ensure};
 use std::{
     io::Write as _,
     net::{AddrParseError, IpAddr, Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6},

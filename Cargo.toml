@@ -1,13 +1,13 @@
 [package]
 name = "proxy-protocol"
-version = "0.5.0"
-authors = ["Mariell Hoversholm <proximyst@proximyst.com>"]
-edition = "2018"
+version = "0.5.1"
+authors = ["Gen0Sec <support@gen0sec.com>"]
+edition = "2024"
 
 license = "MIT OR Apache-2.0"
 description = "PROXY protocol serializer and deserializer"
 documentation = "https://docs.rs/proxy-protocol/"
-repository = "https://github.com/Proximyst/proxy-protocol.git"
+repository = "https://github.com/gen0sec/proxy-protocol"
 keywords = ["proxy", "proxy-protocol", "haproxy", "networking"]
 categories = ["network-programming", "parser-implementations"]
 links = "proxy-protocol"
