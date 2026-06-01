@@ -321,7 +321,10 @@ pub enum ExtensionTlv {
     /// expected to use a unique `type_id` per application, and decoders
     /// dispatch on it. Synapse uses `0xE0` for the per-flow fingerprint
     /// store described in `gen0sec/synapse#352`.
-    Custom { type_id: u8, value: Vec<u8> },
+    Custom {
+        type_id: u8,
+        value: Vec<u8>,
+    },
 }
 
 impl ExtensionTlv {
