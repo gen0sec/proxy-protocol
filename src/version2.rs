@@ -315,6 +315,22 @@ pub enum ExtensionTlv {
     UniqueId(Vec<u8>),
     Ssl(Ssl),
     NetNs(String),
+    /// Application-defined TLV in the `0xE0..=0xEF` range reserved by
+    /// the HAProxy PROXY protocol v2 spec for downstream consumers.
+    /// Carries an arbitrary opaque byte payload — encoders are
+    /// expected to use a unique `type_id` per application, and decoders
+    /// dispatch on it. Synapse uses `0xE0` for the per-flow fingerprint
+    /// store described in `gen0sec/synapse#352`.
+    Custom { type_id: u8, value: Vec<u8> },
+}
+
+impl ExtensionTlv {
+    /// Lower bound (inclusive) of the application-defined TLV type
+    /// range, per the HAProxy v2 spec § 2.2.
+    pub const CUSTOM_TYPE_MIN: u8 = 0xE0;
+    /// Upper bound (inclusive) of the application-defined TLV type
+    /// range, per the HAProxy v2 spec § 2.2.
+    pub const CUSTOM_TYPE_MAX: u8 = 0xEF;
 }
 
 pub(crate) const PP2_TYPE_ALPN: u8 = 0x01;
@@ -364,6 +380,7 @@ impl Tlv for ExtensionTlv {
             Self::UniqueId(_) => PP2_TYPE_UNIQUE_ID,
             Self::Ssl(_) => PP2_TYPE_SSL,
             Self::NetNs(_) => PP2_TYPE_NETNS,
+            Self::Custom { type_id, .. } => *type_id,
         }
     }
 
@@ -375,6 +392,7 @@ impl Tlv for ExtensionTlv {
             Self::UniqueId(id) => id.len(),
             Self::Ssl(data) => data.encoded_len()?.into(),
             Self::NetNs(netns) => netns.len(),
+            Self::Custom { value, .. } => value.len(),
         }
         .try_into()
         .map_err(|_| EncodeError::ValueTooLarge)
@@ -386,6 +404,7 @@ impl Tlv for ExtensionTlv {
             Self::Authority(st) | Self::NetNs(st) => buf.put_slice(st.as_bytes()),
             Self::Crc32c(crc) => buf.put_u32(*crc),
             Self::Ssl(ssl) => ssl.encode(buf)?,
+            Self::Custom { value, .. } => buf.put_slice(value),
         };
         Ok(())
     }
@@ -398,6 +417,14 @@ impl Tlv for ExtensionTlv {
             PP2_TYPE_UNIQUE_ID => Self::UniqueId(vec_from_buf(buf, len)),
             PP2_TYPE_SSL => Self::Ssl(Ssl::parse(buf, len)?),
             PP2_TYPE_NETNS => Self::NetNs(ascii_from_buf(buf, len)?),
+            // Application-defined range — per HAProxy spec § 2.2,
+            // 0xE0..=0xEF is reserved for downstream applications.
+            // Decoders surface the raw payload + type_id so callers
+            // can dispatch on their own per-app vocabulary.
+            t if (Self::CUSTOM_TYPE_MIN..=Self::CUSTOM_TYPE_MAX).contains(&t) => Self::Custom {
+                type_id: t,
+                value: vec_from_buf(buf, len),
+            },
             _ => return InvalidTlvTypeIdSnafu { type_id }.fail(),
         })
     }
@@ -1186,6 +1213,40 @@ mod parse_tests {
                 ],
             }),
         );
+    }
+
+    /// Application-defined TLV (`0xE0..=0xEF`) round-trips through
+    /// parse + encode as a `Custom { type_id, value }` payload. The
+    /// HAProxy v2 spec § 2.2 reserves this range for downstream
+    /// consumer use; the parser was previously rejecting it as
+    /// `InvalidTlvTypeId`.
+    #[test]
+    fn custom_tlv_in_app_range_round_trips() {
+        use super::ExtensionTlv;
+
+        // Encode -> parse round trip
+        let original = ExtensionTlv::Custom {
+            type_id: 0xE0,
+            value: b"synapse-fp:{\"ja4\":\"q13d0312h3_55b375c5ea0e_e7c285222651\"}".to_vec(),
+        };
+        let mut encoded = BytesMut::new();
+        original.encode(&mut encoded).expect("encode app TLV");
+        let mut chunk: &[u8] = &encoded;
+        let parsed = ExtensionTlv::parse(&mut chunk).expect("parse app TLV");
+        assert_eq!(parsed, original);
+
+        // Boundary: 0xE0 (min) and 0xEF (max) are both Custom; 0xDF
+        // is below the range and stays an InvalidTlvTypeId.
+        for type_id in [0xE0u8, 0xEF] {
+            let tlv = ExtensionTlv::Custom {
+                type_id,
+                value: vec![1, 2, 3],
+            };
+            let mut buf = BytesMut::new();
+            tlv.encode(&mut buf).expect("encode");
+            let mut chunk: &[u8] = &buf;
+            assert_eq!(ExtensionTlv::parse(&mut chunk).unwrap(), tlv);
+        }
     }
 }
 
