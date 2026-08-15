@@ -508,25 +508,15 @@ pub(crate) fn parse(buf: &mut impl Buf) -> Result<super::ProxyHeader, ParseError
         ProxyAddressFamily::Unix => 108 * 2,
         ProxyAddressFamily::Unspec => 0,
     };
-    if address_family == ProxyAddressFamily::Unix {
-        ensure!(
-            length >= 108 * 2,
-            InsufficientLengthSpecifiedSnafu {
-                given: length,
-                needs: 108usize * 2,
-            }
-        );
-        ensure!(buf.remaining() >= length, UnexpectedEofSnafu);
-        let mut source = [0u8; 108];
-        let mut destination = [0u8; 108];
-        buf.copy_to_slice(&mut source[..]);
-        buf.copy_to_slice(&mut destination[..]);
-        // TODO(Mariell Hoversholm): Support TLVs
-        if length > 108 * 2 {
-            buf.advance(length - (108 * 2));
-        }
-    }
-
+    // AF_UNIX takes the same path as the other families from here: the
+    // address bytes are read by the `match` below and anything past them is
+    // TLVs, handled by the extension loop. An earlier revision read the 216
+    // address bytes *here as well*, so the read below could never be
+    // satisfied and every AF_UNIX header failed with `UnexpectedEof`.
+    //
+    // The `length >= 216` check that block also carried is not lost: the
+    // `checked_sub` below fails with the same `InsufficientLengthSpecified`
+    // (given: length, needs: 216).
     let mut ext_len =
         length
             .checked_sub(address_len)
@@ -1251,6 +1241,89 @@ mod parse_tests {
             assert_eq!(ExtensionTlv::parse(&mut chunk).unwrap(), tlv);
         }
     }
+    /// Pads a socket path to the 108-byte field AF_UNIX addresses use.
+    fn unix_path(path: &str) -> [u8; 108] {
+        let mut out = [0u8; 108];
+        out[..path.len()].copy_from_slice(path.as_bytes());
+        out
+    }
+
+    /// Body of an AF_UNIX + STREAM header (everything after the signature),
+    /// with `tlvs` appended after the address block.
+    fn unix_header(source: &[u8; 108], destination: &[u8; 108], tlvs: &[u8]) -> Vec<u8> {
+        let mut buf = vec![
+            // Proxy command
+            1u8,
+            // Unix << 4 | Stream
+            (3 << 4) | 1,
+        ];
+        let len = (108 * 2 + tlvs.len()) as u16;
+        buf.extend_from_slice(&len.to_be_bytes());
+        buf.extend_from_slice(&source[..]);
+        buf.extend_from_slice(&destination[..]);
+        buf.extend_from_slice(tlvs);
+        buf
+    }
+
+    /// An AF_UNIX header parses at all. The address block used to be consumed
+    /// twice — once by a dedicated pre-read, once by the address `match` — so
+    /// the second read could never be satisfied and every AF_UNIX header came
+    /// back as `UnexpectedEof`.
+    #[test]
+    fn test_unix() {
+        let source = unix_path("/var/run/haproxy/src.sock");
+        let destination = unix_path("/var/run/haproxy/dst.sock");
+        assert_eq!(
+            parse_fully(&mut &unix_header(&source, &destination, &[])[..]),
+            Ok(ProxyHeader::Version2 {
+                command: ProxyCommand::Proxy,
+                transport_protocol: ProxyTransportProtocol::Stream,
+                addresses: ProxyAddresses::Unix {
+                    source,
+                    destination,
+                },
+                extensions: Vec::new(),
+            }),
+        );
+    }
+
+    /// TLVs following an AF_UNIX address are parsed like any other family's.
+    /// The removed pre-read skipped them wholesale.
+    #[test]
+    fn test_unix_with_tlv() {
+        let source = unix_path("/tmp/a.sock");
+        let destination = unix_path("/tmp/b.sock");
+        // ALPN "h2".
+        let tlvs = [PP2_TYPE_ALPN, 0, 2, 0x68, 0x32];
+        assert_eq!(
+            parse_fully(&mut &unix_header(&source, &destination, &tlvs)[..]),
+            Ok(ProxyHeader::Version2 {
+                command: ProxyCommand::Proxy,
+                transport_protocol: ProxyTransportProtocol::Stream,
+                addresses: ProxyAddresses::Unix {
+                    source,
+                    destination,
+                },
+                extensions: vec![ExtensionTlv::Alpn(b"h2".to_vec())],
+            }),
+        );
+    }
+
+    /// A declared length too small for the 216-byte address block is refused
+    /// rather than read past.
+    #[test]
+    fn test_unix_length_too_short() {
+        let mut header = unix_header(&unix_path("/tmp/a.sock"), &unix_path("/tmp/b.sock"), &[]);
+        // Claim 100 bytes of payload; the address block needs 216.
+        header[2..4].copy_from_slice(&100u16.to_be_bytes());
+        assert_eq!(
+            parse(&mut &header[..]),
+            Err(ParseError::InsufficientLengthSpecified {
+                given: 100,
+                needs: 216,
+            }),
+        );
+    }
 }
 
 #[cfg(test)]
@@ -1526,6 +1599,38 @@ mod encode_tests {
                     0x33,
                 ][..]
             )),
+        );
+    }
+
+    /// What we encode for AF_UNIX, we can read back. The encoder was always
+    /// correct here; the parser could not consume its output.
+    #[test]
+    fn test_unix_roundtrip() {
+        let mut source = [0u8; 108];
+        source[..11].copy_from_slice(b"/tmp/a.sock");
+        let mut destination = [0u8; 108];
+        destination[..11].copy_from_slice(b"/tmp/b.sock");
+
+        let addresses = ProxyAddresses::Unix {
+            source,
+            destination,
+        };
+        let encoded = encode(
+            ProxyCommand::Proxy,
+            ProxyTransportProtocol::Stream,
+            addresses,
+            &[ExtensionTlv::Alpn(b"h2".to_vec())],
+        )
+        .expect("encode");
+
+        assert_eq!(
+            crate::parse(&mut &encoded[..]),
+            Ok(crate::ProxyHeader::Version2 {
+                command: ProxyCommand::Proxy,
+                transport_protocol: ProxyTransportProtocol::Stream,
+                addresses,
+                extensions: vec![ExtensionTlv::Alpn(b"h2".to_vec())],
+            }),
         );
     }
 }
