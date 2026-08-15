@@ -85,7 +85,7 @@ fn parse_version(buf: &mut impl Buf) -> Result<u32, ParseError> {
     // 0x59), and we can therefore decide version based on that.
     //
     // We use ::chunk to not advance any bytes unnecessarily.
-    if buf.chunk()[..6] == [b'P', b'R', b'O', b'X', b'Y', b' '] {
+    if buf.chunk()[..6] == *b"PROXY " {
         buf.advance(6);
         return Ok(1);
     }
@@ -693,10 +693,7 @@ mod parse_tests {
 
     #[test]
     fn test_version_parsing_correct() {
-        assert_eq!(
-            parse_version(&mut &[b'P', b'R', b'O', b'X', b'Y', b' '][..]),
-            Ok(1),
-        );
+        assert_eq!(parse_version(&mut &b"PROXY "[..]), Ok(1),);
         assert_eq!(
             parse_version(
                 &mut &[
